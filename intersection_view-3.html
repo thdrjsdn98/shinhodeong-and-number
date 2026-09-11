@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>4거리 교차로 신호등 시뮬레이션</title>
+<style>
+  :root{
+    --bg:#10141a;
+    --panel:#1a2029;
+    --panel-2:#212934;
+    --line:#2c3542;
+    --text:#e7ecf2;
+    --text-dim:#8b96a5;
+    --road:#2a323d;
+    --road-2:#323c48;
+    --red-on:#ff4433; --red-off:#3a1a18;
+    --yel-on:#ffc233; --yel-off:#3a2f14;
+    --grn-on:#31d17a; --grn-off:#153521;
+    --accent:#5b8ac2;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    padding:18px 12px 36px;
+  }
+  h1{font-size:1.1rem; font-weight:700; margin:0 0 2px; letter-spacing:-0.01em;}
+  .sub{color:var(--text-dim); font-size:0.8rem; margin:0 0 16px;}
+
+  .clock-panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:14px; margin-bottom:14px;
+  }
+  .clock-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    margin-bottom:10px; flex-wrap:wrap;
+  }
+  .timer{
+    font-family:"SF Mono",ui-monospace,Menlo,monospace;
+    font-size:1.8rem; font-weight:600; letter-spacing:0.02em; color:var(--text);
+  }
+  .timer span{color:var(--accent); font-size:1rem; margin-left:6px;}
+  .controls{display:flex; gap:8px;}
+  button{
+    background:var(--panel-2); color:var(--text); border:1px solid var(--line);
+    border-radius:7px; padding:7px 12px; font-size:0.82rem; cursor:pointer; font-family:inherit;
+  }
+  button.active{border-color:var(--accent); color:var(--accent);}
+  button:active{transform:scale(0.97);}
+
+  .segbar{position:relative; height:28px; border-radius:6px; overflow:hidden; display:flex; border:1px solid var(--line);}
+  .seg{flex:1; display:flex; align-items:center; justify-content:center;
+       font-size:0.64rem; color:var(--text-dim); border-right:1px solid var(--line);}
+  .seg:last-child{border-right:none;}
+  .seg.s5{background:#1c232d;}
+  .seg.s1{background:#20293a;}
+  .playhead{
+    position:absolute; top:-2px; width:2px; height:32px; background:var(--accent);
+    box-shadow:0 0 8px var(--accent); transition:left 0.08s linear; pointer-events:none;
+  }
+
+  /* ---- intersection view ---- */
+  .stage{
+    position:relative; width:100%; max-width:560px; margin:0 auto 16px;
+    aspect-ratio:1/1;
+  }
+  .stage svg{position:absolute; inset:0; width:100%; height:100%;}
+
+  .signal{
+    position:absolute; background:var(--panel);
+    border:1px solid var(--line); border-radius:9px; padding:6px 7px 7px;
+    transform:translate(-50%,-50%); z-index:5;
+  }
+  .signal.v-signal{ width:104px; }
+  .signal.p-signal{ width:66px; }
+  .signal .lname{
+    display:flex; justify-content:space-between; align-items:baseline; margin-bottom:5px;
+  }
+  .signal .lname b{font-size:0.74rem;}
+  .signal .lname.small b{font-size:0.6rem; color:var(--text-dim);}
+  .signal .lname span{font-size:0.62rem; color:var(--accent);}
+  .ptime{
+    font-family:"SF Mono",ui-monospace,Menlo,monospace; font-size:0.72rem; font-weight:700;
+    text-align:center; margin-top:5px; letter-spacing:0.01em;
+  }
+  .lamp-row{display:flex; gap:5px; justify-content:center; margin-bottom:4px;}
+  .lamp-row:last-child{margin-bottom:0;}
+  .lamp-row.grid2{
+    display:grid; grid-template-columns:repeat(2,1fr); gap:4px 8px;
+    background:#0d1117; border:1px solid var(--line); border-radius:6px; padding:6px;
+    justify-items:center; margin-bottom:6px;
+  }
+  .lamp{display:flex; flex-direction:column; align-items:center; gap:2px; width:22px;}
+  .dot{width:15px; height:15px; border-radius:50%; border:1px solid var(--line); transition:all .15s;}
+  .dot.arrow{border-radius:3px;}
+  .lbl{font-size:0.52rem; color:var(--text-dim);}
+  .dot.red-on{background:var(--red-on); box-shadow:0 0 9px 2px rgba(255,68,51,.7);}
+  .dot.red-off{background:var(--red-off);}
+  .dot.yel-on{background:var(--yel-on); box-shadow:0 0 9px 2px rgba(255,194,51,.7);}
+  .dot.yel-off{background:var(--yel-off);}
+  .dot.grn-on{background:var(--grn-on); box-shadow:0 0 9px 2px rgba(49,209,122,.7);}
+  .dot.grn-off{background:var(--grn-off);}
+
+  .points{margin-top:12px; max-width:560px; margin-left:auto; margin-right:auto;
+    display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  @media(min-width:640px){.points{grid-template-columns:repeat(4,1fr);}}
+  .points .pc{
+    background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:8px 9px; font-size:0.68rem;
+  }
+  .points .pc b{display:block; font-size:0.72rem; margin-bottom:3px;}
+  .chip{display:inline-block; background:var(--panel-2); border:1px solid var(--line);
+        border-radius:4px; padding:1px 5px; margin:2px 3px 0 0; color:var(--accent);
+        font-family:"SF Mono",ui-monospace,Menlo,monospace; font-size:0.6rem;}
+
+  .warn{
+    margin-top:12px; max-width:560px; margin-left:auto; margin-right:auto;
+    font-size:0.72rem; color:#ffb454; background:#2a2110; border:1px solid #4a3a18;
+    border-radius:6px; padding:8px 10px; line-height:1.4;
+  }
+  footer{margin-top:14px; font-size:0.7rem; color:var(--text-dim); line-height:1.5; text-align:center;}
+</style>
+</head>
+<body>
+
+<h1>4거리 교차로 신호등 시뮬레이션</h1>
+<p class="sub">위에서 내려다본 평면도 · 1차로=북 · 2차로=동 · 3차로=남 · 4차로=서 (임의 배치)</p>
+<p class="sub" style="margin-top:-10px;">
+  🚗 <span style="color:#5b8ac2">■</span>1차로 &nbsp;
+  <span style="color:#e8a33d">■</span>2차로 &nbsp;
+  <span style="color:#c265d1">■</span>3차로 &nbsp;
+  <span style="color:#4dc9a6">■</span>4차로 &nbsp;&nbsp;
+  🚶 <span style="color:#ffe066">●</span>보행자(4개 횡단보도 전부) — 녹색 신호에만 이동, 그 외엔 정지선/대기 위치
+</p>
+
+<div class="clock-panel">
+  <div class="clock-row">
+    <div class="timer" id="timerDisplay">0.0<span>초 / 24.0초</span></div>
+    <div class="controls">
+      <button id="playBtn">일시정지</button>
+      <button data-speed="1" class="speedBtn active">1x</button>
+      <button data-speed="2" class="speedBtn">2x</button>
+      <button data-speed="4" class="speedBtn">4x</button>
+    </div>
+  </div>
+  <div class="segbar" id="segbar"></div>
+</div>
+
+<div class="stage">
+  <svg viewBox="0 0 500 500" preserveAspectRatio="xMidYMid meet"></svg>
+  <!-- signal panels injected by JS -->
+</div>
+
+<div class="points" id="pointsGrid"></div>
+
+<div class="warn" style="color:#7fd4a8;background:#12261c;border-color:#1f4a34;">✓ 3차로 보행자신호는 설계도 기준(녹색 12.0~17.0초, 5초)으로 수정 반영했습니다. (원래 PLC 로직은 18.0초까지 6초간 점등되는 오차가 있었습니다)</div>
+
+<footer>
+  ● 표시 = 점등 상태 · 사각 램프 = 좌회전 신호 · 각 패널의 접점은 해당 순간 ON 상태인 PLC 포인트
+</footer>
+
+<script>
+const CYCLE = 240;
+function within(t, ranges){ return ranges.some(([lo,hi]) => t >= lo && t < hi); }
+
+const lanes = [
+  { id:1, name:"1차로", pos:"N",
+    vehicle:{ red:t=>within(t,[[0,180]]), yel:t=>within(t,[[230,240]]),
+              grn:t=>within(t,[[180,230]]), left:t=>within(t,[[180,230]]) },
+    ped:{ red:t=>within(t,[[50,240]]), grn:t=>within(t,[[0,50]]) },
+    points:{red:"Y20",yel:"Y21",grn:"Y22",left:"Y23",pRed:"Y24",pGrn:"Y25"} },
+  { id:2, name:"2차로", pos:"E",
+    vehicle:{ red:t=>within(t,[[60,240]]), yel:t=>within(t,[[50,60]]),
+              grn:t=>within(t,[[0,50]]), left:t=>within(t,[[0,50]]) },
+    ped:{ red:t=>within(t,[[0,60],[110,240]]), grn:t=>within(t,[[60,110]]) },
+    points:{red:"Y26",yel:"Y27",grn:"Y28",left:"Y29",pRed:"Y2A",pGrn:"Y2B"} },
+  { id:3, name:"3차로", pos:"S",
+    vehicle:{ red:t=>within(t,[[0,60],[120,240]]), yel:t=>within(t,[[110,120]]),
+              grn:t=>within(t,[[60,110]]), left:t=>within(t,[[60,110]]) },
+    ped:{ red:t=>within(t,[[0,120],[170,240]]), grn:t=>within(t,[[120,170]]) },
+    points:{red:"Y2C",yel:"Y2D",grn:"Y2E",left:"Y2F",pRed:"Y30",pGrn:"Y31"} },
+  { id:4, name:"4차로", pos:"W",
+    vehicle:{ red:t=>within(t,[[0,120],[180,240]]), yel:t=>within(t,[[170,180]]),
+              grn:t=>within(t,[[120,170]]), left:t=>within(t,[[120,170]]) },
+    ped:{ red:t=>within(t,[[0,180],[230,240]]), grn:t=>within(t,[[180,230]]) },
+    points:{red:"Y32",yel:"Y33",grn:"Y34",left:"Y35",pRed:"Y36",pGrn:"Y37"} },
+];
+
+/* ---------- draw intersection roads ---------- */
+const svgNS = "http://www.w3.org/2000/svg";
+const svg = document.querySelector('.stage svg');
+function el(tag, attrs){
+  const e = document.createElementNS(svgNS, tag);
+  for(const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+svg.appendChild(el('rect',{x:0,y:0,width:500,height:500,fill:'#151a21'}));
+// roads
+svg.appendChild(el('rect',{x:190,y:0,width:120,height:500,fill:'var(--road)'}));
+svg.appendChild(el('rect',{x:0,y:190,width:500,height:120,fill:'var(--road)'}));
+svg.appendChild(el('rect',{x:190,y:190,width:120,height:120,fill:'#333d4a'}));
+// dashed centerlines
+svg.appendChild(el('line',{x1:250,y1:0,x2:250,y2:180,stroke:'#5a6472','stroke-width':2,'stroke-dasharray':'10 8'}));
+svg.appendChild(el('line',{x1:250,y1:320,x2:250,y2:500,stroke:'#5a6472','stroke-width':2,'stroke-dasharray':'10 8'}));
+svg.appendChild(el('line',{x1:0,y1:250,x2:180,y2:250,stroke:'#5a6472','stroke-width':2,'stroke-dasharray':'10 8'}));
+svg.appendChild(el('line',{x1:320,y1:250,x2:500,y2:250,stroke:'#5a6472','stroke-width':2,'stroke-dasharray':'10 8'}));
+// crosswalks (zebra stripes)
+function crosswalkV(cx0,cy0,w,barH){ // vertical bars across width w, centered band starting cy0, height barH
+  for(let x=cx0; x<cx0+w; x+=18){
+    svg.appendChild(el('rect',{x:x,y:cy0,width:9,height:barH,fill:'#c7ccd3',opacity:0.55}));
+  }
+}
+function crosswalkH(cx0,cy0,h,barW){
+  for(let y=cy0; y<cy0+h; y+=18){
+    svg.appendChild(el('rect',{x:cx0,y:y,width:barW,height:9,fill:'#c7ccd3',opacity:0.55}));
+  }
+}
+crosswalkV(196,176,108,20);   // north crosswalk
+crosswalkV(196,304,108,20);   // south crosswalk
+crosswalkH(176,196,108,20);   // west crosswalk
+crosswalkH(304,196,108,20);   // east crosswalk
+
+/* ---------- vehicles (4) & pedestrians (2) ---------- */
+// 도로 배치: 세로도로 좌측(x~220)=남행(북→남), 우측(x~280)=북행(남→북)
+//            가로도로 상측(y~220)=서행(동→서), 하측(y~280)=동행(서→동)
+const carColors = { 1:'#5b8ac2', 2:'#e8a33d', 3:'#c265d1', 4:'#4dc9a6' };
+const carDefs = {
+  1:{ axis:'y', fixed:220, w:16, h:28, queue:158, exit:540, g:[180,230] }, // 1차로(N): 북→남
+  2:{ axis:'x', fixed:220, w:28, h:16, queue:342, exit:-40, g:[0,50]   }, // 2차로(E): 동→서
+  3:{ axis:'y', fixed:280, w:16, h:28, queue:342, exit:-40, g:[60,110] }, // 3차로(S): 남→북
+  4:{ axis:'x', fixed:280, w:28, h:16, queue:158, exit:540, g:[120,170]}, // 4차로(W): 서→동
+};
+const carRects = {};
+Object.keys(carDefs).forEach(id=>{
+  const d = carDefs[id];
+  const r = el('rect',{width:d.w,height:d.h,rx:4,fill:carColors[id],stroke:'#0b0f14','stroke-width':1.2});
+  svg.appendChild(r);
+  carRects[id] = r;
+  const hl = el('rect',{width:d.axis==='y'?10:6, height:d.axis==='y'?6:10, rx:2, fill:'#fff', opacity:0.55});
+  svg.appendChild(hl);
+  carRects[id+'_hl'] = hl; // 진행방향 표시용 헤드라이트
+});
+
+const pedDefs = {
+  p1:{ axis:'x', fixed:186, from:186, to:314, g:[0,50]   }, // 1차로 북단 횡단보도, 서→동
+  p2:{ axis:'x', fixed:314, from:314, to:186, g:[120,170]}, // 3차로 남단 횡단보도, 동→서
+  p3:{ axis:'y', fixed:314, from:196, to:304, g:[60,110] }, // 2차로 동단 횡단보도, 북→남
+  p4:{ axis:'y', fixed:186, from:304, to:196, g:[180,230]}, // 4차로 서단 횡단보도, 남→북
+};
+const pedEls = {};
+Object.keys(pedDefs).forEach(key=>{
+  const g = el('g',{});
+  const body = el('circle',{r:6.5, fill:'#ffe066', stroke:'#0b0f14','stroke-width':1});
+  const head = el('circle',{r:3, fill:'#fff4c2', stroke:'#0b0f14','stroke-width':0.8});
+  g.appendChild(body); g.appendChild(head);
+  svg.appendChild(g);
+  pedEls[key] = { body, head };
+});
+
+/* ---------- signal panels ---------- */
+// 차량 신호등: 각 차로 진행방향 기준 '먼 쪽' 대각선 코너(도로 옆 보도)에 배치 — 정지선에 선 운전자가 교차로 건너로 보는 위치
+// 보행자 신호등: 해당 차로가 관장하는 횡단보도 바로 옆(보도)에 배치
+const stage = document.querySelector('.stage');
+const vehiclePanelPos = {
+  1:{left:12, top:88},  // 1차로(N) 차량신호 → SW 코너
+  2:{left:12, top:12},  // 2차로(E) 차량신호 → NW 코너
+  3:{left:88, top:12},  // 3차로(S) 차량신호 → NE 코너
+  4:{left:88, top:88},  // 4차로(W) 차량신호 → SE 코너
+};
+const pedPanelPos = {
+  1:{left:66, top:33},  // 북단 횡단보도 옆
+  2:{left:67, top:66},  // 동단 횡단보도 옆
+  3:{left:34, top:67},  // 남단 횡단보도 옆
+  4:{left:33, top:34},  // 서단 횡단보도 옆
+};
+lanes.forEach(lane=>{
+  const vp = vehiclePanelPos[lane.id];
+  const vDiv = document.createElement('div');
+  vDiv.className = 'signal v-signal';
+  vDiv.style.left = vp.left+'%';
+  vDiv.style.top = vp.top+'%';
+  vDiv.innerHTML = `
+    <div class="lname"><b>${lane.name} 차량</b><span id="state-${lane.id}"></span></div>
+    <div class="lamp-row grid2">
+      <div class="lamp"><div class="dot" id="v-red-${lane.id}"></div><div class="lbl">적</div></div>
+      <div class="lamp"><div class="dot" id="v-yel-${lane.id}"></div><div class="lbl">주</div></div>
+      <div class="lamp"><div class="dot" id="v-grn-${lane.id}"></div><div class="lbl">녹</div></div>
+      <div class="lamp"><div class="dot arrow" id="v-left-${lane.id}"></div><div class="lbl">좌</div></div>
+    </div>
+  `;
+  stage.appendChild(vDiv);
+
+  const pp = pedPanelPos[lane.id];
+  const pDiv = document.createElement('div');
+  pDiv.className = 'signal p-signal';
+  pDiv.style.left = pp.left+'%';
+  pDiv.style.top = pp.top+'%';
+  pDiv.innerHTML = `
+    <div class="lname small"><b>${lane.name} 보행</b></div>
+    <div class="lamp-row">
+      <div class="lamp"><div class="dot" id="p-red-${lane.id}"></div><div class="lbl">적</div></div>
+      <div class="lamp"><div class="dot" id="p-grn-${lane.id}"></div><div class="lbl">녹</div></div>
+    </div>
+    <div class="ptime" id="p-time-${lane.id}"></div>
+  `;
+  stage.appendChild(pDiv);
+});
+
+/* ---------- points grid (below) ---------- */
+const pg = document.getElementById('pointsGrid');
+lanes.forEach(lane=>{
+  const d = document.createElement('div');
+  d.className = 'pc';
+  d.innerHTML = `<b>${lane.name} 접점</b><div id="points-${lane.id}"></div>`;
+  pg.appendChild(d);
+});
+
+/* ---------- segment bar ---------- */
+const segDefs = [5,1,5,1,5,1,5,1];
+const segbar = document.getElementById('segbar');
+segDefs.forEach(sec=>{
+  const d = document.createElement('div');
+  d.className = 'seg ' + (sec===5?'s5':'s1');
+  d.style.flex = sec;
+  d.textContent = sec+'초';
+  segbar.appendChild(d);
+});
+const playhead = document.createElement('div');
+playhead.className = 'playhead';
+segbar.appendChild(playhead);
+
+const pedGrnRanges = { 1:[0,50], 2:[60,110], 3:[120,170], 4:[180,230] }; // 보행신호 잔여시간 계산용 (각 차로 ped.grn과 동일)
+
+/* ---------- animation ---------- */
+let t = 0, playing = true, speed = 1;
+
+function render(){
+  document.getElementById('timerDisplay').innerHTML = `${(t/10).toFixed(1)}<span>초 / 24.0초</span>`;
+  playhead.style.left = (t/CYCLE*100) + '%';
+
+  lanes.forEach(lane=>{
+    const v = lane.vehicle, p = lane.ped;
+    const vr=v.red(t), vy=v.yel(t), vg=v.grn(t), vl=v.left(t);
+    const pr=p.red(t), pg2=p.grn(t);
+
+    document.getElementById(`v-red-${lane.id}`).className = 'dot ' + (vr?'red-on':'red-off');
+    document.getElementById(`v-yel-${lane.id}`).className = 'dot ' + (vy?'yel-on':'yel-off');
+    document.getElementById(`v-grn-${lane.id}`).className = 'dot ' + (vg?'grn-on':'grn-off');
+    document.getElementById(`v-left-${lane.id}`).className = 'dot arrow ' + (vl?'grn-on':'grn-off');
+
+    const vLabel = vr?'적':vy?'주':vg?'녹':'-';
+    document.getElementById(`state-${lane.id}`).textContent = vLabel;
+
+    // 보행신호: 적/녹만 사용 (녹색 구간 외엔 전부 적)
+    const [pgs,pge] = pedGrnRanges[lane.id];
+    let remaining;
+    if (t>=pgs && t<pge) remaining = pge - t;               // 보행녹색 중 → 녹색 끝날 때까지
+    else if (t<pgs) remaining = pgs - t;                     // 보행적색 중, 아직 첫 녹색 전
+    else remaining = (CYCLE - t) + pgs;                       // 보행적색 중, 다음 녹색까지(주기 넘어감)
+
+    const pGrnOn = (t>=pgs && t<pge);
+    const pRedOn = !pGrnOn;
+
+    // 녹색이 2초 미만 남았을 때만 0.5초 간격 점멸 (빨간불은 점멸하지 않음)
+    const blinking = pGrnOn && remaining < 20;
+    const blinkOn = Math.floor(t/5) % 2 === 0;
+    const pGrnShow = pGrnOn && !(blinking && !blinkOn);
+
+    document.getElementById(`p-red-${lane.id}`).className = 'dot ' + (pRedOn?'red-on':'red-off');
+    document.getElementById(`p-grn-${lane.id}`).className = 'dot ' + (pGrnShow?'grn-on':'grn-off');
+    document.getElementById(`p-time-${lane.id}`).textContent = (remaining/10).toFixed(1) + '초';
+    document.getElementById(`p-time-${lane.id}`).style.color = pGrnOn ? 'var(--grn-on)' : 'var(--red-on)';
+
+    const active = [];
+    if(vr) active.push(lane.points.red);
+    if(vy) active.push(lane.points.yel);
+    if(vg) active.push(lane.points.grn);
+    if(vl) active.push(lane.points.left);
+    if(pr) active.push(lane.points.pRed);
+    if(pg2) active.push(lane.points.pGrn);
+    document.getElementById(`points-${lane.id}`).innerHTML =
+      active.map(x=>`<span class="chip">${x}</span>`).join('');
+  });
+
+  // 차량 위치 갱신: 녹색(직진/좌회전)일 때만 정지선→퇴출지점 이동, 그 외엔 정지선에서 대기
+  Object.keys(carDefs).forEach(id=>{
+    const d = carDefs[id];
+    const [gs,ge] = d.g;
+    let moving;
+    if (t>=gs && t<ge){
+      moving = d.queue + (d.exit - d.queue) * ((t-gs)/(ge-gs));
+    } else {
+      moving = d.queue;
+    }
+    const r = carRects[id], hl = carRects[id+'_hl'];
+    if(d.axis==='y'){
+      r.setAttribute('x', d.fixed - d.w/2);
+      r.setAttribute('y', moving - d.h/2);
+      const dir = d.exit > d.queue ? 1 : -1; // 진행방향(아래+ / 위-)
+      hl.setAttribute('x', d.fixed - 5);
+      hl.setAttribute('y', moving - d.h/2 + (dir>0 ? d.h-8 : 2));
+    } else {
+      r.setAttribute('x', moving - d.w/2);
+      r.setAttribute('y', d.fixed - d.h/2);
+      const dir = d.exit > d.queue ? 1 : -1; // 진행방향(오른쪽+ / 왼쪽-)
+      hl.setAttribute('x', moving - d.w/2 + (dir>0 ? d.w-8 : 2));
+      hl.setAttribute('y', d.fixed - 3);
+    }
+  });
+
+  // 보행자 위치 갱신: 보행 녹색일 때만 횡단보도를 가로질러 이동, 그 외엔 대기
+  Object.keys(pedDefs).forEach(key=>{
+    const d = pedDefs[key];
+    const [gs,ge] = d.g;
+    let moving;
+    if (t>=gs && t<ge){
+      moving = d.from + (d.to - d.from) * ((t-gs)/(ge-gs));
+    } else {
+      moving = d.from;
+    }
+    const cx = d.axis==='x' ? moving : d.fixed;
+    const cy = d.axis==='x' ? d.fixed : moving;
+    const { body, head } = pedEls[key];
+    body.setAttribute('cx', cx); body.setAttribute('cy', cy);
+    head.setAttribute('cx', cx - 4); head.setAttribute('cy', cy - 4);
+  });
+}
+
+setInterval(()=>{
+  if(playing){
+    t += speed;
+    if(t >= CYCLE) t = 0;
+    render();
+  }
+}, 100);
+render();
+
+document.getElementById('playBtn').addEventListener('click', e=>{
+  playing = !playing;
+  e.target.textContent = playing ? '일시정지' : '재생';
+});
+document.querySelectorAll('.speedBtn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    speed = Number(btn.dataset.speed);
+    document.querySelectorAll('.speedBtn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+</script>
+</body>
+</html>
