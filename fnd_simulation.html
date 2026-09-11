@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FND 7세그먼트 시뮬레이션</title>
+<style>
+  :root{
+    --bg:#10141a; --panel:#1a2029; --panel-2:#212934; --line:#2c3542;
+    --text:#e7ecf2; --text-dim:#8b96a5; --accent:#5b8ac2;
+    --seg-on:#ff3b30; --seg-off:#33202090;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    padding:18px 12px 36px;}
+  h1{font-size:1.1rem; font-weight:700; margin:0 0 2px;}
+  .sub{color:var(--text-dim); font-size:0.8rem; margin:0 0 16px; line-height:1.5;}
+
+  .clock-panel{background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:14px; margin-bottom:14px;}
+  .clock-row{display:flex; align-items:center; justify-content:space-between; gap:10px;
+    margin-bottom:10px; flex-wrap:wrap;}
+  .timer{font-family:"SF Mono",ui-monospace,Menlo,monospace; font-size:1.7rem;
+    font-weight:600; color:var(--text);}
+  .timer span{color:var(--accent); font-size:0.95rem; margin-left:6px;}
+  .controls{display:flex; gap:8px; flex-wrap:wrap;}
+  button{background:var(--panel-2); color:var(--text); border:1px solid var(--line);
+    border-radius:7px; padding:7px 12px; font-size:0.82rem; cursor:pointer; font-family:inherit;}
+  button.active{border-color:var(--accent); color:var(--accent);}
+  button:active{transform:scale(0.97);}
+
+  .segbar{position:relative; height:26px; border-radius:6px; overflow:hidden; display:flex; border:1px solid var(--line);}
+  .seg{flex:1; display:flex; align-items:center; justify-content:center;
+       font-size:0.62rem; color:var(--text-dim); border-right:1px solid var(--line);}
+  .seg:last-child{border-right:none;}
+  .seg:nth-child(odd){background:#1c232d;}
+  .seg:nth-child(even){background:#20293a;}
+  .playhead{position:absolute; top:-2px; width:2px; height:30px; background:var(--accent);
+    box-shadow:0 0 8px var(--accent); transition:left 0.08s linear; pointer-events:none;}
+
+  .stage{display:flex; justify-content:center; padding:30px 0; background:var(--panel);
+    border:1px solid var(--line); border-radius:10px; margin-bottom:14px;}
+  .fnd-wrap{position:relative; width:160px; aspect-ratio:100/130; background:#050505;
+    border-radius:10px; padding:0;}
+  .seg7{position:absolute; border-radius:4px; background:#2a0a08;
+    transition:background-color .1s, box-shadow .1s;}
+  .seg7.on{background:#ff3b30; box-shadow:0 0 12px 4px rgba(255,59,48,0.85);}
+  .seg-a{left:22%; top:3.1%;  width:56%; height:8.5%;}
+  .seg-f{left:10%; top:11.5%; width:11%; height:35.4%;}
+  .seg-b{left:79%; top:11.5%; width:11%; height:35.4%;}
+  .seg-g{left:22%; top:45.4%; width:56%; height:8.5%;}
+  .seg-e{left:10%; top:53.8%; width:11%; height:35.4%;}
+  .seg-c{left:79%; top:53.8%; width:11%; height:35.4%;}
+  .seg-d{left:22%; top:88.5%; width:56%; height:8.5%;}
+
+  .points{display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:14px;}
+  @media(max-width:420px){.points{grid-template-columns:repeat(4,1fr); gap:6px;}}
+  .pc{background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:8px 6px; text-align:center;}
+  .pc .name{font-size:0.68rem; color:var(--text-dim); margin-bottom:4px;}
+  .pc .val{font-family:"SF Mono",ui-monospace,Menlo,monospace; font-size:0.78rem; font-weight:600;}
+  .pc.on .val{color:var(--seg-on);}
+  .pc.off .val{color:var(--text-dim);}
+
+  .note{font-size:0.72rem; color:var(--text-dim); line-height:1.6; background:var(--panel);
+    border:1px solid var(--line); border-radius:8px; padding:10px 12px;}
+</style>
+</head>
+<body>
+
+<h1>FND 7세그먼트 디스플레이 시뮬레이션</h1>
+<p class="sub">Timer_0 10.0초 주기 자동 반복 · 화이트보드 설계값 및 PLC 로직(P00020~P00026) 그대로 반영</p>
+
+<div class="clock-panel">
+  <div class="clock-row">
+    <div class="timer" id="timerDisplay">0.0<span>초 / 10.0초</span></div>
+    <div class="controls">
+      <button id="playBtn">정지</button>
+      <button data-speed="1" class="speedBtn active">1x</button>
+      <button data-speed="2" class="speedBtn">2x</button>
+      <button data-speed="4" class="speedBtn">4x</button>
+    </div>
+  </div>
+  <div class="segbar" id="segbar"></div>
+</div>
+
+<div class="stage">
+  <div class="fnd-wrap">
+    <div class="seg7 seg-a" id="seg-a"></div>
+    <div class="seg7 seg-f" id="seg-f"></div>
+    <div class="seg7 seg-b" id="seg-b"></div>
+    <div class="seg7 seg-g" id="seg-g"></div>
+    <div class="seg7 seg-e" id="seg-e"></div>
+    <div class="seg7 seg-c" id="seg-c"></div>
+    <div class="seg7 seg-d" id="seg-d"></div>
+  </div>
+</div>
+
+<div class="points" id="pointsGrid"></div>
+
+<div class="note">
+  기동(P00001)/정지(P00000)로 M00000 Relay를 자기유지시켜 Timer_0(0~10.0초)를 반복 구동하는 구조를 그대로 반영했습니다.<br>
+  구간별 ON 조건(0.1초 단위, ×10=화이트보드 표기값과 동일):<br>
+  P20 0~3,4~5,6~8,9~10 · P21 0~6,9~10 · P22 0~3,5~10 · P23 0~2,3~8 · P24 1~2,3~4,7~8,9~10 · P25 0~7,8~10 · P26 1~2,3~5,6~8,9~10<br>
+  이 조합대로 구동하면 실제 표준 숫자 폰트와는 다른 모양이 나올 수 있어요 — 화이트보드/PLC에 적힌 값을 그대로 옮긴 결과라 그렇습니다. 특정 자리에서 모양이 이상하면 그 구간의 경계값을 알려주시면 바로 수정해드릴게요.
+</div>
+
+<script>
+const CYCLE = 100; // tenths of a second (10.0s)
+function within(t, ranges){ return ranges.some(([lo,hi]) => t >= lo && t < hi); }
+
+const segments = {
+  a: { id:"P20", ranges:[[0,30],[40,50],[60,80],[90,100]] },
+  f: { id:"P21", ranges:[[0,60],[90,100]] },
+  b: { id:"P22", ranges:[[0,30],[50,100]] },
+  g: { id:"P23", ranges:[[0,20],[30,80]] },
+  e: { id:"P24", ranges:[[10,20],[30,40],[70,80],[90,100]] },
+  c: { id:"P25", ranges:[[0,70],[80,100]] },
+  d: { id:"P26", ranges:[[10,20],[30,50],[60,80],[90,100]] },
+};
+
+/* points grid */
+const pg = document.getElementById('pointsGrid');
+Object.keys(segments).forEach(key=>{
+  const s = segments[key];
+  const d = document.createElement('div');
+  d.className = 'pc off';
+  d.id = 'pc-'+key;
+  d.innerHTML = `<div class="name">${s.id}</div><div class="val" id="pcv-${key}">OFF</div>`;
+  pg.appendChild(d);
+});
+
+/* segment bar (10 x 1-second slots) */
+const segbar = document.getElementById('segbar');
+for(let i=0;i<10;i++){
+  const d = document.createElement('div');
+  d.className = 'seg';
+  d.textContent = i;
+  segbar.appendChild(d);
+}
+const playhead = document.createElement('div');
+playhead.className = 'playhead';
+segbar.appendChild(playhead);
+
+let t = 0, playing = true, speed = 1;
+
+function render(){
+  document.getElementById('timerDisplay').innerHTML = `${(t/10).toFixed(1)}<span>초 / 10.0초</span>`;
+  playhead.style.left = (t/CYCLE*100) + '%';
+
+  Object.keys(segments).forEach(key=>{
+    const on = within(t, segments[key].ranges);
+    const shape = document.getElementById('seg-'+key);
+    shape.className = 'seg7 seg-' + key + (on ? ' on' : '');
+    const pc = document.getElementById('pc-'+key);
+    pc.className = 'pc ' + (on?'on':'off');
+    document.getElementById('pcv-'+key).textContent = on ? 'ON' : 'OFF';
+  });
+}
+
+setInterval(()=>{
+  if(playing){
+    t += speed;
+    if(t >= CYCLE) t = 0;
+    render();
+  }
+}, 100);
+render();
+
+document.getElementById('playBtn').addEventListener('click', e=>{
+  playing = !playing;
+  e.target.textContent = playing ? '정지' : '기동';
+});
+document.querySelectorAll('.speedBtn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    speed = Number(btn.dataset.speed);
+    document.querySelectorAll('.speedBtn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+</script>
+</body>
+</html>
